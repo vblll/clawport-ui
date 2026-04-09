@@ -1,14 +1,14 @@
 {
   "name": "clawport-ui",
   "version": "0.8.9",
-  "description": "Open-source dashboard for managing, monitoring, and chatting with your OpenClaw AI agents.",
+  "description": "Custom fork of Clawport UI for managing, monitoring, and chatting with AI agents.",
   "homepage": "https://clawport.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JohnRiceML/clawport-ui.git"
+    "url": "https://github.com/vblll/clawport-ui.git"
   },
   "bugs": {
-    "url": "https://github.com/JohnRiceML/clawport-ui/issues"
+    "url": "https://github.com/vblll/clawport-ui/issues"
   },
   "keywords": [
     "openclaw",

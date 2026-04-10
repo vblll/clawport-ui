@@ -52,6 +52,16 @@ For operations that require device keypair signing or aren't exposed via HTTP, C
 
 **Why CLI for vision?** The gateway's HTTP endpoint strips `image_url` content from messages. The CLI has device keys for `operator.write` scope, which `chat.send` requires. ClawPort sends the image via CLI, then polls `chat.history` for the response.
 
+### Cron Edit Runtime Notes
+
+ClawPort now uses the OpenClaw CLI as the only supported write path for inline cron payload edits in the Cron Monitor.
+
+- The current edit scope is intentionally narrow: top-level `description`, `payload.message`, and `payload.timeoutSeconds`.
+- ClawPort does not rewrite `~/.openclaw/cron/jobs.json` directly for these edits.
+- Local verification against `OpenClaw 2026.4.8` showed that `openclaw cron edit` accepts `--description`, `--message`, and `--timeout-seconds` syntactically, but local help output does not expose those flags clearly.
+- In practice, failures usually surface as gateway/runtime errors first, so ClawPort should return actionable errors for gateway unavailability and unsupported flags instead of assuming save success.
+- Binary resolution for cron edits follows this order: `OPENCLAW_BIN`, then PATH detection, then plain `openclaw`.
+
 ## Agent Client Protocol (ACP)
 
 ACP is OpenClaw's protocol for external tools to interact with running agent sessions. Key concepts:

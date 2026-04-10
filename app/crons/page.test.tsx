@@ -40,6 +40,8 @@ vi.mock('@/components/crons/PipelineWizard', () => ({
 
 import CronsPage from './page'
 
+const originalFetch = globalThis.fetch
+
 const BASE_CRON = {
   id: 'cron-1',
   name: 'jarvis-morning-brief',
@@ -124,7 +126,7 @@ describe('CronsPage payload inline edit', () => {
 
   afterEach(() => {
     cleanup()
-    vi.unstubAllGlobals()
+    globalThis.fetch = originalFetch
   })
 
   async function renderAndExpand() {

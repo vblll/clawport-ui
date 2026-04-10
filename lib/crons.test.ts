@@ -410,6 +410,12 @@ describe('getCrons - missing fields defaults', () => {
     expect(crons[0].lastDurationMs).toBeNull()
     expect(crons[0].consecutiveErrors).toBe(0)
     expect(crons[0].lastDeliveryStatus).toBeNull()
+    expect(crons[0].payload).toEqual({
+      kind: null,
+      lightContext: null,
+      message: null,
+      timeoutSeconds: null,
+    })
   })
 
   it('handles empty array from CLI', async () => {
@@ -497,6 +503,29 @@ describe('getCrons - actual data format with expr/tz and rich fields', () => {
     expect(crons[0].lastDurationMs).toBe(147116)
     expect(crons[0].consecutiveErrors).toBe(0)
     expect(crons[0].lastDeliveryStatus).toBe('delivered')
+  })
+
+  it('parses payload fields when present', async () => {
+    mockExecSync.mockReturnValue(JSON.stringify([{
+      id: 'payload-test',
+      name: 'jarvis-deep-analysis',
+      description: 'Weekly project review',
+      schedule: { kind: 'cron', expr: '0 6 * * 1', tz: 'America/Chicago' },
+      payload: {
+        kind: 'isolated',
+        lightContext: true,
+        message: 'Summarize open issues and propose next actions.',
+        timeoutSeconds: 1800,
+      },
+      state: { status: 'ok' },
+    }]))
+    const crons = await getCrons()
+    expect(crons[0].payload).toEqual({
+      kind: 'isolated',
+      lightContext: true,
+      message: 'Summarize open issues and propose next actions.',
+      timeoutSeconds: 1800,
+    })
   })
 
   it('handles delivery with missing to field', async () => {

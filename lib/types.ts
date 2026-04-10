@@ -149,6 +149,12 @@ export interface CronJob {
   description: string | null
   enabled: boolean
   delivery: CronDelivery | null
+  payload?: {
+    message: string | null
+    timeoutSeconds: number | null
+    kind: string | null
+    lightContext: boolean | null
+  }
   lastDurationMs: number | null
   consecutiveErrors: number
   lastDeliveryStatus: string | null

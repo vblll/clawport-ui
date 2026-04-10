@@ -97,6 +97,14 @@ export async function getCrons(): Promise<CronJob[]> {
         }
       }
 
+      const rawPayload = j.payload as Record<string, unknown> | undefined
+      const payload = {
+        message: typeof rawPayload?.message === 'string' ? rawPayload.message : null,
+        timeoutSeconds: typeof rawPayload?.timeoutSeconds === 'number' ? rawPayload.timeoutSeconds : null,
+        kind: typeof rawPayload?.kind === 'string' ? rawPayload.kind : null,
+        lightContext: typeof rawPayload?.lightContext === 'boolean' ? rawPayload.lightContext : null,
+      }
+
       // Rich state fields
       const lastDurationMs = typeof state.lastDurationMs === 'number' ? state.lastDurationMs : null
       const consecutiveErrors = typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0
@@ -116,6 +124,7 @@ export async function getCrons(): Promise<CronJob[]> {
         description: typeof j.description === 'string' ? j.description : null,
         enabled: j.enabled !== false,
         delivery,
+        payload,
         lastDurationMs,
         consecutiveErrors,
         lastDeliveryStatus,

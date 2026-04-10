@@ -19,6 +19,12 @@ import { PipelineWizard } from "@/components/crons/PipelineWizard";
 type Filter = "all" | "ok" | "error" | "idle";
 type Tab = "overview" | "schedule" | "pipelines";
 
+interface CronPayloadDraft {
+  description: string
+  message: string
+  timeoutSeconds: string
+}
+
 const STATUS_DOT: Record<string, string> = {
   ok: "var(--system-green)",
   error: "var(--system-red)",
@@ -43,6 +49,31 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "schedule", label: "Schedule" },
   { key: "pipelines", label: "Pipelines" },
 ];
+
+function buildPayloadDraft(cron: CronJob): CronPayloadDraft {
+  return {
+    description: cron.description ?? "",
+    message: cron.payload?.message ?? "",
+    timeoutSeconds: cron.payload?.timeoutSeconds != null ? String(cron.payload.timeoutSeconds) : "",
+  };
+}
+
+function getMessagePreview(message: string): { text: string; truncated: boolean } {
+  const normalized = message.trimEnd();
+  if (!normalized) {
+    return { text: "", truncated: false };
+  }
+
+  const paragraphs = normalized.split(/\n{2,}/);
+  if (paragraphs.length > 2) {
+    return { text: paragraphs.slice(0, 2).join("\n\n"), truncated: true };
+  }
+  if (normalized.length > 220) {
+    return { text: normalized.slice(0, 220).trimEnd() + "...", truncated: true };
+  }
+
+  return { text: normalized, truncated: false };
+}
 
 /* ─── Delivery helpers ─────────────────────────────────────────── */
 
@@ -388,6 +419,191 @@ function RecentRuns({ jobId }: { jobId: string }) {
   );
 }
 
+function PayloadSection({
+  cron,
+  onSave,
+}: {
+  cron: CronJob
+  onSave: (jobId: string, payload: { description: string; message: string; timeoutSeconds: number }) => Promise<CronJob>
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<CronPayloadDraft>(() => buildPayloadDraft(cron));
+  const [expandedMessage, setExpandedMessage] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(buildPayloadDraft(cron));
+      setSaveError(null);
+    }
+  }, [
+    cron.description,
+    cron.id,
+    cron.payload?.message,
+    cron.payload?.timeoutSeconds,
+    isEditing,
+  ]);
+
+  const preview = getMessagePreview(cron.payload?.message ?? "");
+  const renderedMessage = expandedMessage ? (cron.payload?.message ?? "") : preview.text;
+
+  function updateDraft<K extends keyof CronPayloadDraft>(key: K, value: CronPayloadDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleEditStart() {
+    setDraft(buildPayloadDraft(cron));
+    setSaveError(null);
+    setIsEditing(true);
+  }
+
+  function handleCancel() {
+    setDraft(buildPayloadDraft(cron));
+    setSaveError(null);
+    setIsEditing(false);
+  }
+
+  async function handleSave() {
+    const timeoutSeconds = Number.parseInt(draft.timeoutSeconds, 10);
+
+    if (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0) {
+      setSaveError("Timeout must be a positive integer");
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      await onSave(cron.id, {
+        description: draft.description,
+        message: draft.message,
+        timeoutSeconds,
+      });
+      setIsEditing(false);
+      setExpandedMessage(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save payload");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ borderRadius: "var(--radius-sm)", border: "1px solid var(--separator)", background: "var(--fill-secondary)", padding: "var(--space-3)", marginBottom: "var(--space-3)" }}>
+      <div className="flex items-center justify-between" style={{ gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+        <div style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)", fontWeight: "var(--weight-semibold)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
+          Payload
+        </div>
+        {!isEditing && (
+          <button
+            onClick={handleEditStart}
+            className="btn-ghost focus-ring"
+            aria-label="Edit payload"
+            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", fontSize: "var(--text-caption1)", fontWeight: "var(--weight-medium)" }}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Description</span>
+            <input
+              value={draft.description}
+              onChange={(e) => updateDraft("description", e.target.value)}
+              style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--separator)", background: "var(--bg)", color: "var(--text-primary)", padding: "10px 12px", fontSize: "var(--text-caption1)" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Message</span>
+            <textarea
+              value={draft.message}
+              onChange={(e) => updateDraft("message", e.target.value)}
+              rows={8}
+              style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--separator)", background: "var(--bg)", color: "var(--text-primary)", padding: "10px 12px", fontSize: "var(--text-caption1)", whiteSpace: "pre-wrap", resize: "vertical", fontFamily: "inherit" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 180 }}>
+            <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Timeout</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={draft.timeoutSeconds}
+              onChange={(e) => updateDraft("timeoutSeconds", e.target.value)}
+              style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--separator)", background: "var(--bg)", color: "var(--text-primary)", padding: "10px 12px", fontSize: "var(--text-caption1)" }}
+            />
+          </label>
+
+          {saveError && (
+            <div style={{ fontSize: "var(--text-caption1)", color: "var(--system-red)" }}>
+              {saveError}
+            </div>
+          )}
+
+          <div className="flex items-center" style={{ gap: "var(--space-2)" }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="focus-ring"
+              aria-label="Save payload"
+              style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", border: "none", background: saving ? "var(--fill-tertiary)" : "var(--accent)", color: saving ? "var(--text-tertiary)" : "white", cursor: saving ? "default" : "pointer", fontSize: "var(--text-caption1)", fontWeight: "var(--weight-medium)" }}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={saving}
+              className="btn-ghost focus-ring"
+              aria-label="Cancel edit"
+              style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", fontSize: "var(--text-caption1)", fontWeight: "var(--weight-medium)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-2) var(--space-4)" }}>
+          <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Description</span>
+          <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>
+            {cron.description?.trim() ? cron.description : "—"}
+          </span>
+
+          <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Message</span>
+          <div>
+            <div style={{ borderRadius: "var(--radius-sm)", background: "var(--bg)", border: "1px solid var(--separator)", padding: "10px 12px" }}>
+              <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "var(--text-secondary)", fontSize: "var(--text-caption1)", lineHeight: "var(--leading-relaxed)", fontFamily: "inherit" }}>
+                {renderedMessage || "—"}
+              </pre>
+            </div>
+            {preview.truncated && (
+              <button
+                onClick={() => setExpandedMessage((current) => !current)}
+                className="btn-ghost focus-ring"
+                aria-label={expandedMessage ? "Show less" : "Show more"}
+                style={{ marginTop: "var(--space-2)", padding: "4px 8px", borderRadius: "var(--radius-sm)", fontSize: "var(--text-caption2)", fontWeight: "var(--weight-medium)" }}
+              >
+                {expandedMessage ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
+
+          <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Timeout</span>
+          <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-secondary)" }}>
+            {cron.payload?.timeoutSeconds != null ? `${cron.payload.timeoutSeconds} seconds` : "—"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Component ─────────────────────────────────────────────────── */
 
 export default function CronsPage() {
@@ -408,36 +624,34 @@ export default function CronsPage() {
 
   const pillsRef = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
-    fetch("/api/crons")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load crons");
-        return r.json();
-      })
-      .then((cronData) => {
-        if (Array.isArray(cronData)) {
-          setCrons(cronData);
-          setPipelines([]);
-        } else {
-          setCrons(cronData.crons);
-          setPipelines(cronData.pipelines || []);
-        }
-        setLastRefresh(new Date());
-        setLoading(false);
-        setRefreshing(false);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        setLoading(false);
-        setRefreshing(false);
-      });
+    try {
+      const response = await fetch("/api/crons");
+      if (!response.ok) throw new Error("Failed to load crons");
+
+      const cronData = await response.json();
+      if (Array.isArray(cronData)) {
+        setCrons(cronData);
+        setPipelines([]);
+      } else {
+        setCrons(cronData.crons);
+        setPipelines(cronData.pipelines || []);
+      }
+      setLastRefresh(new Date());
+      setLoading(false);
+      setRefreshing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 60000);
+    void refresh();
+    const interval = setInterval(() => { void refresh(); }, 60000);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -479,6 +693,35 @@ export default function CronsPage() {
       setTimeout(() => setCopiedId(null), 2000);
     });
   }
+
+  const savePayload = useCallback(async (
+    jobId: string,
+    payload: { description: string; message: string; timeoutSeconds: number }
+  ) => {
+    const response = await fetch("/api/crons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId, ...payload }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        data && typeof data === "object" && "error" in data && typeof data.error === "string"
+          ? data.error
+          : "Failed to save cron payload"
+      );
+    }
+
+    const updatedJob = data && typeof data === "object" && "job" in data ? data.job as CronJob : null;
+    if (!updatedJob) {
+      throw new Error("Cron save completed without updated job data");
+    }
+
+    setCrons((current) => current.map((cron) => cron.id === updatedJob.id ? updatedJob : cron));
+    void refresh();
+    return updatedJob;
+  }, [refresh]);
 
   if (error && crons.length === 0) {
     return <ErrorState message={error} onRetry={refresh} />;
@@ -711,14 +954,6 @@ export default function CronsPage() {
                           {isExpanded && (
                             <div className="animate-slide-down" style={{ padding: "0 var(--space-4) var(--space-4) var(--space-4)", marginLeft: 3 }}>
                               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-1) var(--space-4)", marginTop: "var(--space-2)", marginBottom: "var(--space-3)" }}>
-                                {/* Description */}
-                                {cron.description && (
-                                  <>
-                                    <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Description</span>
-                                    <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-secondary)" }}>{cron.description}</span>
-                                  </>
-                                )}
-
                                 {/* Last run */}
                                 <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-tertiary)" }}>Last run</span>
                                 <span style={{ fontSize: "var(--text-caption1)", color: "var(--text-secondary)" }}>{timeAgo(cron.lastRun)}</span>
@@ -769,6 +1004,8 @@ export default function CronsPage() {
                                   </>
                                 )}
                               </div>
+
+                              <PayloadSection cron={cron} onSave={savePayload} />
 
                               {/* Error box */}
                               {cron.lastError && (
